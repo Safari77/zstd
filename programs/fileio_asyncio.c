@@ -357,15 +357,32 @@ void AIO_WritePool_releaseIoJob(IOJob_t* job) {
     AIO_IOPool_releaseIoJob(job);
 }
 
+/* fsync FILE, EINVAL errno is okay, other ones not; retries EINTR .
+ * Return 0 on success. */
+static int fsync_file(FILE *f) {
+  int ret;
+
+  if (fflush(f) != 0) return 1;
+  do {
+    ret = fsync(fileno(f));
+  } while ((ret == -1) && (errno == EINTR));
+  if (ret == 0 || (errno == EINVAL)) return 0;
+  return 1;
+}
+
 /* AIO_WritePool_closeFile:
  * Ends sparse write and closes the writePool's current file and sets the file to NULL.
  * Requires completion of all queues write jobs and release of all otherwise acquired jobs.  */
 int AIO_WritePool_closeFile(WritePoolCtx_t* ctx) {
+    int fres;
+
     FILE* const dstFile = ctx->base.file;
     assert(dstFile!=NULL || ctx->base.prefs->testMode!=0);
     AIO_WritePool_sparseWriteEnd(ctx);
     AIO_IOPool_setFile(&ctx->base, NULL);
-    return fclose(dstFile);
+    fres = fsync_file(dstFile);
+    if ((fclose(dstFile) == 0) && (fres == 0)) return 0;
+    return 1;
 }
 
 /* AIO_WritePool_executeWriteJob:
