@@ -85,14 +85,10 @@ test:
 	$(MAKE) -C $(TESTDIR) $@
 	ZSTD=../../programs/zstd $(MAKE) -C doc/educational_decoder $@
 
-## shortest: same as `make check`
-.PHONY: shortest
-shortest:
-	$(Q)$(MAKE) -C $(TESTDIR) $@
-
 ## check: run basic tests for `zstd` cli
 .PHONY: check
-check: shortest
+check:
+	$(Q)$(MAKE) -C $(TESTDIR) $@
 
 .PHONY: automated_benchmarking
 automated_benchmarking:
@@ -300,9 +296,9 @@ msanregressiontest:
 
 update_regressionResults : REGRESS_RESULTS_DIR := /tmp/regress_results_dir/
 update_regressionResults:
-	$(MAKE) -C programs zstd
-	$(MAKE) -C tests/regression test
-	$(RM) -rf $(REGRESS_RESULTS_DIR)
+	$(MAKE) -j -C programs zstd
+	$(MAKE) -j -C tests/regression test
+	$(RM) -r $(REGRESS_RESULTS_DIR)
 	$(MKDIR) $(REGRESS_RESULTS_DIR)
 	./tests/regression/test                         \
         --cache  tests/regression/cache             \
