@@ -639,6 +639,22 @@ static unsigned parseCompressionParameters(const char* stringPtr, ZSTD_compressi
     return 1;
 }
 
+static void setMaxCompression(ZSTD_compressionParameters* params)
+{
+    params->windowLog = ZSTD_WINDOWLOG_MAX;
+    params->chainLog = ZSTD_CHAINLOG_MAX;
+    params->hashLog = ZSTD_HASHLOG_MAX;
+    params->searchLog = ZSTD_SEARCHLOG_MAX;
+    params->minMatch = ZSTD_MINMATCH_MIN;
+    params->targetLength = ZSTD_TARGETLENGTH_MAX;
+    params->strategy = ZSTD_STRATEGY_MAX;
+    g_overlapLog = ZSTD_OVERLAPLOG_MAX;
+    g_ldmHashLog = ZSTD_LDM_HASHLOG_MAX;
+    g_ldmHashRateLog = 0; /* automatically derived */
+    g_ldmMinMatch = 16; /* heuristic */
+    g_ldmBucketSizeLog = ZSTD_LDM_BUCKETSIZELOG_MAX;
+}
+
 static void printVersion(void)
 {
     if (g_displayLevel < DISPLAY_LEVEL_DEFAULT) {
@@ -794,22 +810,22 @@ static unsigned default_nbThreads(void) {
             CLEAN_RETURN(1);      \
 }   }   }
 
-#define NEXT_UINT32(val32) {      \
-    const char* __nb;             \
-    NEXT_FIELD(__nb);             \
+#define NEXT_UINT32(val32) {        \
+    const char* __nb;               \
+    NEXT_FIELD(__nb);               \
     val32 = readU32FromChar(&__nb); \
-    if(*__nb != 0) {         \
+    if(*__nb != 0) {                \
         errorOut("error: only numeric values with optional suffixes K, KB, KiB, M, MB, MiB are allowed"); \
-    }                             \
+    }                               \
 }
 
-#define NEXT_TSIZE(valTsize) {      \
-    const char* __nb;             \
-    NEXT_FIELD(__nb);             \
+#define NEXT_TSIZE(valTsize) {           \
+    const char* __nb;                    \
+    NEXT_FIELD(__nb);                    \
     valTsize = readSizeTFromChar(&__nb); \
-    if(*__nb != 0) {         \
+    if(*__nb != 0) {                     \
         errorOut("error: only numeric values with optional suffixes K, KB, KiB, M, MB, MiB are allowed"); \
-    }                             \
+    }                                    \
 }
 
 typedef enum { zom_compress, zom_decompress, zom_test, zom_bench, zom_train, zom_list } zstd_operation_mode;
@@ -1007,6 +1023,16 @@ int main(int argCount, const char* argv[])
                 if (!strcmp(argument, "--fake-stderr-is-console")) { UTIL_fakeStderrIsConsole(); continue; }
                 if (!strcmp(argument, "--trace-file-stat")) { UTIL_traceFileStat(); continue; }
 
+                if (!strcmp(argument, "--max")) {
+                    if (sizeof(void*)==4) {
+                        DISPLAYLEVEL(2, "--max is incompatible with 32-bit mode \n");
+                        badUsage(programName, originalArgument);
+                        CLEAN_RETURN(1);
+                    }
+                    ultra=1; ldmFlag = 1; setMaxCompression(&compressionParams);
+                    continue;
+                }
+
                 /* long commands with arguments */
 #ifndef ZSTD_NODICT
                 if (longCommandWArg(&argument, "--train-cover")) {
@@ -1082,10 +1108,11 @@ int main(int argCount, const char* argv[])
 #ifndef ZSTD_NOTRACE
                 if (longCommandWArg(&argument, "--trace")) { char const* traceFile; NEXT_FIELD(traceFile); TRACE_enable(traceFile); continue; }
 #endif
-                if (longCommandWArg(&argument, "--patch-from")) { NEXT_FIELD(patchFromDictFileName); continue; }
+                if (longCommandWArg(&argument, "--patch-from")) { NEXT_FIELD(patchFromDictFileName); ultra = 1; continue; }
                 if (longCommandWArg(&argument, "--long")) {
                     unsigned ldmWindowLog = 0;
                     ldmFlag = 1;
+                    ultra = 1;
                     /* Parse optional window log */
                     if (*argument == '=') {
                         ++argument;
