@@ -1093,8 +1093,8 @@ println "\n===>  dictionary tests "
 println "- Test high/low compressibility corpus training"
 datagen -g12M -P90 > tmpCorpusHighCompress
 datagen -g12M -P5 > tmpCorpusLowCompress
-zstd --train -B2K tmpCorpusHighCompress -o tmpDictHighCompress
-zstd --train -B2K tmpCorpusLowCompress -o tmpDictLowCompress
+zstd --train --split=2K tmpCorpusHighCompress -o tmpDictHighCompress
+zstd --train --split=2K tmpCorpusLowCompress -o tmpDictLowCompress
 rm -f tmpCorpusHighCompress tmpCorpusLowCompress tmpDictHighCompress tmpDictLowCompress
 println "- Test with raw dict (content only) "
 datagen > tmpDict
@@ -1179,8 +1179,8 @@ rm -f tmp* dictionary
 
 println "- Test --memory for dictionary compression"
 datagen -g12M -P90 > tmpCorpusHighCompress
-zstd --train -B2K tmpCorpusHighCompress -o tmpDictHighCompress --memory=10K && die "Dictionary training should fail : --memory too low (10K)"
-zstd --train -B2K tmpCorpusHighCompress -o tmpDictHighCompress --memory=5MB 2> zstTrainWithMemLimitStdErr
+zstd --train --split=2K tmpCorpusHighCompress -o tmpDictHighCompress --memory=10K && die "Dictionary training should fail : --memory too low (10K)"
+zstd --train --split=2K tmpCorpusHighCompress -o tmpDictHighCompress --memory=5MB 2> zstTrainWithMemLimitStdErr
 cat zstTrainWithMemLimitStdErr | $GREP "setting manual memory limit for dictionary training data at 5 MB"
 cat zstTrainWithMemLimitStdErr | $GREP "Training samples set too large (12 MB); training on 5 MB only..."
 rm zstTrainWithMemLimitStdErr
@@ -1555,7 +1555,7 @@ then
     roundTripTest -g4M "1 -T0 --auto-threads=logical"
     roundTripTest -g8M "3 -T2"
     roundTripTest -g8000K "2 --threads=2"
-    fileRoundTripTest -g4M "19 -T2 -B1M"
+    fileRoundTripTest -g4M "19 -T2 --split=1M"
 
     println "\n===>  zstdmt long distance matching round-trip tests "
     roundTripTest -g8M "3 --long=24 -T2"
@@ -1770,7 +1770,7 @@ then
 
     println "\n===>   rsyncable mode "
     roundTripTest -g10M " --rsyncable"
-    roundTripTest -g10M " --rsyncable -B100K"
+    roundTripTest -g10M " --rsyncable --split=100K"
     println "===>   test: --rsyncable must fail with --single-thread"
     zstd -f -vv --rsyncable --single-thread tmp && die "--rsyncable must fail with --single-thread"
 fi
