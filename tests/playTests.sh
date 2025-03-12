@@ -1,7 +1,7 @@
 #!/bin/sh
 
 set -e # exit immediately on error
-# set -x # print commands before execution (debug)
+set -x # print commands before execution (debug)
 
 unset ZSTD_CLEVEL
 unset ZSTD_NBTHREADS
@@ -16,13 +16,7 @@ datagen() {
     "$DATAGEN_BIN" "$@"
 }
 
-zstd() {
-    if [ -z "$EXE_PREFIX" ]; then
-        "$ZSTD_BIN" "$@"
-    else
-        "$EXE_PREFIX" "$ZSTD_BIN" "$@"
-    fi
-}
+alias zstd='$EXE_PREFIX $ZSTD_BIN'
 
 sudoZstd() {
     if [ -z "$EXE_PREFIX" ]; then
@@ -49,7 +43,7 @@ roundTripTest() {
     rm -f tmp1 tmp2
     println "roundTripTest: datagen $1 $proba | zstd -v$cLevel | zstd -d$dLevel"
     datagen $1 $proba | $MD5SUM > tmp1
-    datagen $1 $proba | zstd --ultra -v$cLevel | zstd -d$dLevel  | $MD5SUM > tmp2
+    datagen $1 $proba | zstd -T0 --ultra -v$cLevel | zstd -d$dLevel  | $MD5SUM > tmp2
     $DIFF -q tmp1 tmp2
 }
 
@@ -71,7 +65,7 @@ fileRoundTripTest() {
     println "fileRoundTripTest: datagen $1 $local_p > tmp && zstd -v$local_c -c tmp | zstd -d$local_d"
     datagen $1 $local_p > tmp
     < tmp $MD5SUM > tmp.md5.1
-    zstd --ultra -v$local_c -c tmp | zstd -d$local_d | $MD5SUM > tmp.md5.2
+    zstd -T0 --ultra -v$local_c -c tmp | zstd -d$local_d | $MD5SUM > tmp.md5.2
     $DIFF -q tmp.md5.1 tmp.md5.2
 }
 
@@ -1563,14 +1557,16 @@ then
     println "\n===>  zstdmt environment variable tests "
     echo "multifoo" >> mt_tmp
     ZSTD_NBTHREADS=-3 zstd -f mt_tmp # negative value, warn and revert to default setting
-    ZSTD_NBTHREADS=''  zstd -f mt_tmp # empty env var, warn and revert to default setting
-    ZSTD_NBTHREADS=-   zstd -f mt_tmp # malformed env var, warn and revert to default setting
-    ZSTD_NBTHREADS=a   zstd -f mt_tmp # malformed env var, warn and revert to default setting
-    ZSTD_NBTHREADS=+a  zstd -f mt_tmp # malformed env var, warn and revert to default setting
+    ZSTD_NBTHREADS='' zstd -f mt_tmp # empty env var, warn and revert to default setting
+    ZSTD_NBTHREADS=-  zstd -f mt_tmp # malformed env var, warn and revert to default setting
+    ZSTD_NBTHREADS=a  zstd -f mt_tmp # malformed env var, warn and revert to default setting
+    ZSTD_NBTHREADS=+a zstd -f mt_tmp # malformed env var, warn and revert to default setting
     ZSTD_NBTHREADS=3a7 zstd -f mt_tmp # malformed env var, warn and revert to default setting
     ZSTD_NBTHREADS=50000000000 zstd -f mt_tmp # numeric value too large, warn and revert to default setting=
     ZSTD_NBTHREADS=2  zstd -f mt_tmp # correct usage
-    ZSTD_NBTHREADS=1  zstd -f mt_tmp # correct usage: single thread
+    ZSTD_NBTHREADS=1  zstd -f mt_tmp # correct usage: single worker
+    ZSTD_NBTHREADS=4  zstd -f mt_tmp -vv 2>&1 | $GREP "4 worker threads" # check message
+    ZSTD_NBTHREADS=0  zstd -f mt_tmp -vv 2>&1 | $GREP "core(s) detected" # check core count autodetection is triggered
     # temporary envvar changes in the above tests would actually persist in macos /bin/sh
     unset ZSTD_NBTHREADS
     rm -f mt_tmp*
@@ -1889,36 +1885,36 @@ println "\n===>  cover dictionary builder : advanced options "
 TESTFILE="$PRGDIR"/zstdcli.c
 datagen > tmpDict
 println "- Create first dictionary"
-zstd --train-cover=k=46,d=8,split=80 "$TESTDIR"/*.c "$PRGDIR"/*.c -o tmpDict
+zstd -T0 --train-cover=k=46,d=8,split=80 "$TESTDIR"/*.c "$PRGDIR"/*.c -o tmpDict
 cp "$TESTFILE" tmp
 zstd -f tmp -D tmpDict
 zstd -f tmp -D tmpDict --patch-from=tmpDict && die "error: can't use -D and --patch-from=#at the same time"
 zstd -d tmp.zst -D tmpDict -fo result
 $DIFF "$TESTFILE" result
-zstd --train-cover=k=56,d=8 && die "Create dictionary without input file (should error)"
+zstd -T0 --train-cover=k=56,d=8 && die "Create dictionary without input file (should error)"
 println "- Create second (different) dictionary"
-zstd --train-cover=k=56,d=8 "$TESTDIR"/*.c "$PRGDIR"/*.c "$PRGDIR"/*.h -o tmpDictC
+zstd -T0 --train-cover=k=56,d=8 "$TESTDIR"/*.c "$PRGDIR"/*.c "$PRGDIR"/*.h -o tmpDictC
 zstd -d tmp.zst -D tmpDictC -fo result && die "wrong dictionary not detected!"
 println "- Create dictionary using shrink-dict flag"
-zstd --train-cover=steps=256,shrink "$TESTDIR"/*.c "$PRGDIR"/*.c --dictID=1 -o tmpShrinkDict
-zstd --train-cover=steps=256,shrink=1 "$TESTDIR"/*.c "$PRGDIR"/*.c --dictID=1 -o tmpShrinkDict1
-zstd --train-cover=steps=256,shrink=5 "$TESTDIR"/*.c "$PRGDIR"/*.c --dictID=1 -o tmpShrinkDict2
-zstd --train-cover=shrink=5,steps=256 "$TESTDIR"/*.c "$PRGDIR"/*.c --dictID=1 -o tmpShrinkDict3
+zstd -T0 --train-cover=steps=256,shrink "$TESTDIR"/*.c "$PRGDIR"/*.c --dictID=1 -o tmpShrinkDict
+zstd -T0 --train-cover=steps=256,shrink=1 "$TESTDIR"/*.c "$PRGDIR"/*.c --dictID=1 -o tmpShrinkDict1
+zstd -T0 --train-cover=steps=256,shrink=5 "$TESTDIR"/*.c "$PRGDIR"/*.c --dictID=1 -o tmpShrinkDict2
+zstd -T0 --train-cover=shrink=5,steps=256 "$TESTDIR"/*.c "$PRGDIR"/*.c --dictID=1 -o tmpShrinkDict3
 println "- Create dictionary with short dictID"
-zstd --train-cover=k=46,d=8,split=80 "$TESTDIR"/*.c "$PRGDIR"/*.c --dictID=1 -o tmpDict1
+zstd -T0 --train-cover=k=46,d=8,split=80 "$TESTDIR"/*.c "$PRGDIR"/*.c --dictID=1 -o tmpDict1
 cmp tmpDict tmpDict1 && die "dictionaries should have different ID !"
 println "- Create dictionary with size limit"
-zstd --train-cover=steps=8 "$TESTDIR"/*.c "$PRGDIR"/*.c -o tmpDict2 --maxdict=4K
+zstd -T0 --train-cover=steps=8 "$TESTDIR"/*.c "$PRGDIR"/*.c -o tmpDict2 --maxdict=4K
 println "- Compare size of dictionary from 90% training samples with 80% training samples"
-zstd --train-cover=split=90 -r "$TESTDIR"/*.c "$PRGDIR"/*.c
-zstd --train-cover=split=80 -r "$TESTDIR"/*.c "$PRGDIR"/*.c
+zstd -T0 --train-cover=split=90 -r "$TESTDIR"/*.c "$PRGDIR"/*.c
+zstd -T0 --train-cover=split=80 -r "$TESTDIR"/*.c "$PRGDIR"/*.c
 println "- Create dictionary using all samples for both training and testing"
-zstd --train-cover=split=100 -r "$TESTDIR"/*.c "$PRGDIR"/*.c
+zstd -T0 --train-cover=split=100 -r "$TESTDIR"/*.c "$PRGDIR"/*.c
 println "- Test -o before --train-cover"
 rm -f tmpDict dictionary
 zstd -o tmpDict --train-cover "$TESTDIR"/*.c "$PRGDIR"/*.c
 test -f tmpDict
-zstd --train-cover "$TESTDIR"/*.c "$PRGDIR"/*.c
+zstd -T0 --train-cover "$TESTDIR"/*.c "$PRGDIR"/*.c
 test -f dictionary
 rm -f tmp* dictionary
 

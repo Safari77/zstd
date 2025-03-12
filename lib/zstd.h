@@ -111,7 +111,7 @@ extern "C" {
 /*------   Version   ------*/
 #define ZSTD_VERSION_MAJOR    1
 #define ZSTD_VERSION_MINOR    5
-#define ZSTD_VERSION_RELEASE  7
+#define ZSTD_VERSION_RELEASE  8
 #define ZSTD_VERSION_NUMBER  (ZSTD_VERSION_MAJOR *100*100 + ZSTD_VERSION_MINOR *100 + ZSTD_VERSION_RELEASE)
 
 /*! ZSTD_versionNumber() :
@@ -3137,6 +3137,18 @@ typedef enum { ZSTDnit_frameHeader, ZSTDnit_blockHeader, ZSTDnit_block, ZSTDnit_
 ZSTDLIB_STATIC_API ZSTD_nextInputType_e ZSTD_nextInputType(ZSTD_DCtx* dctx);
 
 
+
+/*! ZSTD_isDeterministicBuild() :
+ * Returns 1 if the library is built using standard compilation flags,
+ * and participates in determinism guarantees with other builds of the
+ * same version.
+ * If this function returns 0, it means the library was compiled with
+ * non-standard compilation flags that change the output of the
+ * compressor.
+ * This is mainly used for Zstd's determinism test suite, which is only
+ * run when this function returns 1.
+ */
+ZSTDLIB_API int ZSTD_isDeterministicBuild(void);
 
 
 /* ========================================= */
