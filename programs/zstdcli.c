@@ -230,7 +230,8 @@ static void usageAdvanced(const char* programName)
 #endif
     DISPLAYOUT("  --adapt                       Dynamically adapt compression level to I/O conditions.\n");
     DISPLAYOUT("  --long[=#]                    Enable long distance matching with window log #. [Default: %u]\n", g_defaultMaxWindowLog);
-    DISPLAYOUT("  --patch-from=REF              Use REF as the reference point for Zstandard's diff engine. \n\n");
+    DISPLAYOUT("  --patch-from=REF              Use REF as the reference point for Zstandard's diff engine. \n");
+    DISPLAYOUT("  --patch-apply                 Equivalent for `-d --patch-from` \n\n");
 # ifdef ZSTD_MULTITHREAD
     DISPLAYOUT("  -T#                           Spawn # compression threads. [Default: 1; pass 0 for core count.]\n");
     DISPLAYOUT("  --single-thread               Share a single thread for I/O and compression (slightly different than `-T1`).\n");
@@ -1124,6 +1125,7 @@ int main(int argCount, const char* argv[])
                 if (longCommandWArg(&argument, "--trace")) { char const* traceFile; NEXT_FIELD(traceFile); TRACE_enable(traceFile); continue; }
 #endif
                 if (longCommandWArg(&argument, "--patch-from")) { NEXT_FIELD(patchFromDictFileName); ultra = 1; continue; }
+                if (longCommandWArg(&argument, "--patch-apply")) { operation=zom_decompress; NEXT_FIELD(patchFromDictFileName); memLimit= 1U << ZSTD_WINDOWLOG_MAX; continue; }
                 if (longCommandWArg(&argument, "--long")) {
                     unsigned ldmWindowLog = 0;
                     ldmFlag = 1;
@@ -1377,7 +1379,7 @@ int main(int argCount, const char* argv[])
         size_t const nbFileLists = file_of_names->tableSize;
         size_t flNb;
         for (flNb=0; flNb < nbFileLists; flNb++) {
-            FileNamesTable* const fnt = UTIL_createFileNamesTable_fromFileName(file_of_names->fileNames[flNb]);
+            FileNamesTable* const fnt = UTIL_createFileNamesTable_fromFileList(file_of_names->fileNames[flNb]);
             if (fnt==NULL) {
                 DISPLAYLEVEL(1, "zstd: error reading %s \n", file_of_names->fileNames[flNb]);
                 CLEAN_RETURN(1);
