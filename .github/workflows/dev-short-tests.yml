@@ -237,6 +237,7 @@ jobs:
             -Dbin_tests=true \
             -Dbin_contrib=true \
             -Ddefault_library=both \
+            -Dlegacy_level=1 \
             build/meson mesonBuild
           ninja -C mesonBuild/
           meson test -C mesonBuild/ --print-errorlogs

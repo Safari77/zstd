@@ -160,6 +160,16 @@ jobs:
     - name: clang + ASan + UBSan + Fuzz Test
       run: CC=clang FUZZER_FLAGS="--long-tests" make clean uasan-fuzztest
 
+  # the only job decoding real legacy frames under sanitizers.
+  # fuzzers do build these decoders, but only reach them if an input
+  # happens to carry a legacy magic number.
+  clang-asan-ubsan-legacy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
+    - name: clang + ASan + UBSan + legacy decoders
+      run: CC=clang make uasan-test-legacy
+
   gcc-asan-ubsan-fuzz32:
     runs-on: ubuntu-latest
     steps:
