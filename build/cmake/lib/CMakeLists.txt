@@ -109,7 +109,8 @@ endif ()
 # Our assembly expects to be compiled by a C compiler, and is only enabled for
 # __GNUC__ compatible compilers. Otherwise all the ASM code is disabled by
 # macros.
-if(NOT CMAKE_ASM_COMPILER STREQUAL CMAKE_C_COMPILER)
+if(NOT CMAKE_ASM_COMPILER STREQUAL CMAKE_C_COMPILER
+   OR NOT "${CMAKE_ASM_COMPILER_ARG1}" STREQUAL "${CMAKE_C_COMPILER_ARG1}")
     set_source_files_properties(${Sources} PROPERTIES LANGUAGE C)
 endif()
 
@@ -135,6 +136,8 @@ if (ZSTD_BUILD_SHARED)
     add_definition(libzstd_shared ZSTDLIB_VISIBLE)
     add_definition(libzstd_shared ZSTDERRORLIB_VISIBLE)
     add_definition(libzstd_shared ZDICTLIB_VISIBLE)
+    add_definition(libzstd_shared ZSTDLIB_STATIC_API)
+    add_definition(libzstd_shared ZDICTLIB_STATIC_API)
 endif ()
 if (ZSTD_BUILD_STATIC)
     add_library(libzstd_static STATIC ${Sources} ${Headers})
@@ -284,7 +287,7 @@ foreach(target_suffix IN ITEMS "_shared" "_static" "")
 endforeach()
 
 # uninstall target
-if (NOT TARGET uninstall)
+if (NOT ZSTD_IS_SUBPROJECT AND NOT TARGET uninstall)
     configure_file(
             "${CMAKE_CURRENT_SOURCE_DIR}/cmake_uninstall.cmake.in"
             "${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake"

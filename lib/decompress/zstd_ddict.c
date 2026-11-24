@@ -35,8 +35,9 @@
 *********************************************************/
 struct ZSTD_DDict_s {
     void* dictBuffer;
-    const void* dictContent;
+    const void* dictContent;  /* complete dictionary, including any header */
     size_t dictSize;
+    size_t dictHeaderSize;    /* excluded from matchable history */
     ZSTD_entropyDTables_t entropy;
     U32 dictID;
     U32 entropyPresent;
@@ -57,12 +58,16 @@ size_t ZSTD_DDict_dictSize(const ZSTD_DDict* ddict)
 
 void ZSTD_copyDDictParameters(ZSTD_DCtx* dctx, const ZSTD_DDict* ddict)
 {
+    const void* content;
     DEBUGLOG(4, "ZSTD_copyDDictParameters");
     assert(dctx != NULL);
     assert(ddict != NULL);
+    content = ddict->dictHeaderSize != 0
+            ? (const BYTE*)ddict->dictContent + ddict->dictHeaderSize
+            : ddict->dictContent;
     dctx->dictID = ddict->dictID;
-    dctx->prefixStart = ddict->dictContent;
-    dctx->virtualStart = ddict->dictContent;
+    dctx->prefixStart = content;
+    dctx->virtualStart = content;
     /* An empty DDict may have NULL content. */
     dctx->dictEnd = ddict->dictSize != 0
             ? (const BYTE*)ddict->dictContent + ddict->dictSize
@@ -94,6 +99,7 @@ ZSTD_loadEntropy_intoDDict(ZSTD_DDict* ddict,
                            ZSTD_dictContentType_e dictContentType)
 {
     ddict->dictID = 0;
+    ddict->dictHeaderSize = 0;
     ddict->entropyPresent = 0;
     if (dictContentType == ZSTD_dct_rawContent) return 0;
 
@@ -112,9 +118,12 @@ ZSTD_loadEntropy_intoDDict(ZSTD_DDict* ddict,
     ddict->dictID = MEM_readLE32((const char*)ddict->dictContent + ZSTD_FRAMEIDSIZE);
 
     /* load entropy tables */
-    RETURN_ERROR_IF(ZSTD_isError(ZSTD_loadDEntropy(
-            &ddict->entropy, ddict->dictContent, ddict->dictSize)),
-        dictionary_corrupted, "");
+    {   size_t const headerSize = ZSTD_loadDEntropy(
+                &ddict->entropy, ddict->dictContent, ddict->dictSize);
+        RETURN_ERROR_IF(ZSTD_isError(headerSize), dictionary_corrupted, "");
+        assert(headerSize <= ddict->dictSize);
+        ddict->dictHeaderSize = headerSize;
+    }
     ddict->entropyPresent = 1;
     return 0;
 }
@@ -125,6 +134,8 @@ static size_t ZSTD_initDDict_internal(ZSTD_DDict* ddict,
                                       ZSTD_dictLoadMethod_e dictLoadMethod,
                                       ZSTD_dictContentType_e dictContentType)
 {
+    /* An empty dictionary has no referenced storage, even in by-copy mode. */
+    if (dictSize == 0) dict = NULL;
     if ((dictLoadMethod == ZSTD_dlm_byRef) || (!dict) || (!dictSize)) {
         ddict->dictBuffer = NULL;
         ddict->dictContent = dict;
@@ -212,10 +223,10 @@ const ZSTD_DDict* ZSTD_initStaticDDict(
     size_t const neededSpace = ZSTD_estimateDDictSize(dictSize, dictLoadMethod);
     ZSTD_DDict* const ddict = (ZSTD_DDict*)sBuffer;
     assert(sBuffer != NULL);
-    assert(dict != NULL);
+    assert(dict != NULL || dictSize == 0);
     if ((size_t)sBuffer & 7) return NULL;   /* 8-aligned */
     if (ZSTD_isError(neededSpace) || sBufferSize < neededSpace) return NULL;
-    if (dictLoadMethod == ZSTD_dlm_byCopy) {
+    if (dictLoadMethod == ZSTD_dlm_byCopy && dictSize != 0) {
         ZSTD_memcpy(ddict+1, dict, dictSize);  /* local copy */
         dict = ddict+1;
     }

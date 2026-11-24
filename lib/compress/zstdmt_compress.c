@@ -463,10 +463,7 @@ static void ZSTDMT_releaseCCtx(ZSTDMT_CCtxPool* pool, ZSTD_CCtx* cctx)
 
 /* ====   Serial State   ==== */
 
-typedef struct {
-    void const* start;
-    size_t size;
-} Range;
+typedef ZSTDMT_Range Range;
 
 typedef struct {
     /* All variables in the struct are protected by mutex. */
@@ -1593,9 +1590,8 @@ static size_t ZSTDMT_flushProduced(ZSTDMT_CCtx* mtctx, ZSTD_outBuffer* output, u
 }
 
 /**
- * Returns the range of data used by the earliest job that is not yet complete.
- * If the data of the first job is broken up into two segments, we cover both
- * sections.
+ * Returns the oldest input-ring range used by a job that is not yet complete.
+ * Protecting this range prevents ring reuse from reaching the job's source.
  */
 static Range ZSTDMT_getInputDataInUse(ZSTDMT_CCtx* mtctx)
 {
@@ -1617,11 +1613,10 @@ static Range ZSTDMT_getInputDataInUse(ZSTDMT_CCtx* mtctx)
         ZSTD_pthread_mutex_unlock(&mtctx->jobs[wJobID].job_mutex);
 
         if (consumed < mtctx->jobs[wJobID].src.size) {
-            Range range = mtctx->jobs[wJobID].prefix;
-            if (range.size == 0) {
-                /* Empty prefix */
-                range = mtctx->jobs[wJobID].src;
-            }
+            Range const range = ZSTDMT_getJobInputRange(
+                mtctx->jobs[wJobID].prefix,
+                mtctx->jobs[wJobID].src,
+                mtctx->jobs[wJobID].firstJob);
             /* Job source in multiple segments not supported yet */
             assert(range.start <= mtctx->jobs[wJobID].src.start);
             return range;
@@ -1867,6 +1862,11 @@ size_t ZSTDMT_nextInputSizeHint(const ZSTDMT_CCtx* mtctx)
     return hintInSize;
 }
 
+unsigned ZSTDMT_isFrameEnded(const ZSTDMT_CCtx* mtctx)
+{
+    return mtctx->frameEnded;
+}
+
 /** ZSTDMT_compressStream_generic() :
  *  internal use only - exposed to be invoked from zstd_compress.c
  *  assumption : output and input are valid (pos <= size)
@@ -1887,8 +1887,12 @@ size_t ZSTDMT_compressStream_generic(ZSTDMT_CCtx* mtctx,
         return ERROR(stage_wrong);
     }
 
-    /* fill input buffer */
+    /* fill input buffer.
+     * Once the last job of the frame is created, remaining input belongs to the next frame :
+     * it is left untouched, like the single-thread path does. No job can follow the last one :
+     * it could wait forever at the serial gate, behind an empty last job written inline. */
     if ( (!mtctx->jobReady)
+      && (!mtctx->frameEnded)
       && (input->size > input->pos) ) {   /* support NULL input */
         if (mtctx->inBuff.buffer.start == NULL) {
             assert(mtctx->inBuff.filled == 0); /* Can't fill an empty buffer */
@@ -1937,7 +1941,7 @@ size_t ZSTDMT_compressStream_generic(ZSTDMT_CCtx* mtctx,
 
     /* check for potential compressed data ready to be flushed */
     {   size_t const remainingToFlush = ZSTDMT_flushProduced(mtctx, output, !forwardInputProgress, endOp); /* block if there was no forward input progress */
-        if (input->pos < input->size) return MAX(remainingToFlush, 1);  /* input not consumed : do not end flush yet */
+        if ((input->pos < input->size) && (!mtctx->frameEnded)) return MAX(remainingToFlush, 1);  /* input not consumed : do not end flush yet */
         DEBUGLOG(5, "end of ZSTDMT_compressStream_generic: remainingToFlush = %u", (U32)remainingToFlush);
         return remainingToFlush;
     }
